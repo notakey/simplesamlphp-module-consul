@@ -96,6 +96,8 @@ class Consul extends Store
             throw new \SimpleSAML_Error_Exception("Failed index for type $type", 8767);
         }
 
+
+        // TODO possible OOM exception here, need custom exception and paged loading
         foreach($kv_ix as $ix=>$v){
             $kv_ix[$ix] = str_replace($path, '', $v);
         }
