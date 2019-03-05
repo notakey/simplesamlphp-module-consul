@@ -73,6 +73,7 @@ class Consul extends Store
             return null;
         }
 
+        \SimpleSAML\Logger::debug('Consul: Fetch '.$type.'/'.$key);
         // if($val->getStatusCode() == 404){
         //     return null;
         // }
@@ -122,6 +123,8 @@ class Consul extends Store
         if(strlen($encval) > (512*1024)){
             throw new \SimpleSAML_Error_Exception("Playload for key $type/$key exceeds limit", 8765);
         }
+
+        \SimpleSAML\Logger::debug('Consul: Store '.$type.'/'.$key.' '.strlen($encval).'B');
 		return $this->conn->put($this->getRequestPath($type, $key), $encval);
 	}
 
@@ -145,6 +148,8 @@ class Consul extends Store
 
             return $this->conn->delete($this->getRequestPath($type));
         }
+
+        \SimpleSAML\Logger::debug('Consul: Delete '.$type.'/'.$key);
 
 		return $this->conn->delete($this->getRequestPath($type, $key));
 	}
