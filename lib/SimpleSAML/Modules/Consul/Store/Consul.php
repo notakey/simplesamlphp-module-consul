@@ -41,7 +41,7 @@ class Consul extends Store
         try{
             $this->conn = $this->sf->get('kv');
         }catch(Exception $ex){
-            throw new SimpleSAML_Error_Exception("Cannot initialize KV store, verify that kv_url is configured", 8764);
+            throw new \SimpleSAML_Error_Exception("Cannot initialize KV store, verify that kv_url is configured", 8764);
         }
     }
 
@@ -73,6 +73,7 @@ class Consul extends Store
             return null;
         }
 
+        \SimpleSAML\Logger::debug('Consul: Fetch '.$type.'/'.$key);
         // if($val->getStatusCode() == 404){
         //     return null;
         // }
@@ -93,9 +94,11 @@ class Consul extends Store
         $kv_ix = json_decode($val->getBody(), true);
 
         if(!is_array($kv_ix)){
-            throw new SimpleSAML_Error_Exception("Failed index for type $type", 8767);
+            throw new \SimpleSAML_Error_Exception("Failed index for type $type", 8767);
         }
 
+
+        // TODO possible OOM exception here, need custom exception and paged loading
         foreach($kv_ix as $ix=>$v){
             $kv_ix[$ix] = str_replace($path, '', $v);
         }
@@ -117,9 +120,11 @@ class Consul extends Store
 		assert('is_null($expire) || (is_int($expire) && $expire > 2592000)');
         $encval = $this->encodeValue($key, $value, $expire);
 
-        if(strlen($encval) > 512*1024){
-            throw new SimpleSAML_Error_Exception("Playload for key $type/$key exceeds limit", 8765);
+        if(strlen($encval) > (512*1024)){
+            throw new \SimpleSAML_Error_Exception("Playload for key $type/$key exceeds limit", 8765);
         }
+
+        \SimpleSAML\Logger::debug('Consul: Store '.$type.'/'.$key.' '.strlen($encval).'B');
 		return $this->conn->put($this->getRequestPath($type, $key), $encval);
 	}
 
@@ -143,6 +148,8 @@ class Consul extends Store
 
             return $this->conn->delete($this->getRequestPath($type));
         }
+
+        \SimpleSAML\Logger::debug('Consul: Delete '.$type.'/'.$key);
 
 		return $this->conn->delete($this->getRequestPath($type, $key));
 	}
@@ -175,7 +182,7 @@ class Consul extends Store
     }
 
     public function createQueryBuilder(){
-        throw new SimpleSAML_Error_Exception("KV based data persistence drivers do not support queries. Please rewrite module to use KV.", 8799);
+        throw new \SimpleSAML_Error_Exception("KV based data persistence drivers do not support queries. Please rewrite module to use KV.", 8799);
     }
 
     /**

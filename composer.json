@@ -2,14 +2,12 @@
     "name": "notakey/simplesamlphp-module-consul",
     "description": "A SimpleSAMLphp module adding support for Consul KV.",
     "type": "simplesamlphp-module",
-    "keywords": [ "notakey", "consul" ],
+    "keywords": ["notakey", "consul"],
     "license": "GPL-3.0",
-    "authors": [
-        {
-            "name": "Ingemars Asmanis",
-            "email": "ingemars.asmanis@notakey.com"
-        }
-    ],
+    "authors": [{
+        "name": "Ingemars Asmanis",
+        "email": "ingemars.asmanis@notakey.com"
+    }],
     "autoload": {
         "psr-0": {
             "SimpleSAML\\Modules\\Consul\\": "lib"
@@ -19,10 +17,5 @@
         "php": ">=5.5.9",
         "simplesamlphp/composer-module-installer": "^1.0",
         "sensiolabs/consul-php-sdk": "^3.0"
-    },
-    "extra": {
-        "branch-alias": {
-            "dev-master": "2.0.x-dev"
-        }
     }
 }
