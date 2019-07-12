@@ -119,12 +119,16 @@ class Consul extends Store
         assert('is_string($key)');
         assert('is_null($expire) || (is_int($expire) && $expire > 2592000)');
         $encval = $this->encodeValue($key, $value, $expire);
+        $esize = strlen($encval);
 
-        if(strlen($encval) > (512*1024)){
-            throw new \SimpleSAML_Error_Exception("Playload for key $type/$key exceeds limit", 8765);
+        if($esize > (10*1024))
+            \SimpleSAML\Logger::warning('Consul: Store '.$type.'/'.$key.' '.ceil($esize/1024)."kB");
+
+        if($esize > (512*1024)){
+            throw new \SimpleSAML_Session_Too_Big_Exception("Playload for key $type/$key exceeds limit", 8765);
         }
 
-        \SimpleSAML\Logger::debug('Consul: Store '.$type.'/'.$key.' '.strlen($encval).'B');
+        \SimpleSAML\Logger::debug('Consul: Store '.$type.'/'.$key.' '.$esize.'B');
         return $this->conn->put($this->getRequestPath($type, $key), $encval);
      }
 
