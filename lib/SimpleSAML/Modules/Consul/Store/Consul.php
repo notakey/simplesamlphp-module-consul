@@ -45,16 +45,16 @@ class Consul extends Store
         }
     }
 
-	/**
-	 * Retrieve a value from the datastore.
-	 *
-	 * @param string $type  The datatype.
-	 * @param string $key  The key.
-	 * @return mixed|NULL  The value.
-	 */
-	public function get($type, $key) {
-		assert('is_string($type)');
-		assert('is_string($key) || is_null($key)');
+     /**
+      * Retrieve a value from the datastore.
+      *
+      * @param string $type  The datatype.
+      * @param string $key  The key.
+      * @return mixed|NULL  The value.
+      */
+     public function get($type, $key) {
+        assert('is_string($type)');
+        assert('is_string($key) || is_null($key)');
 
         if(is_null($key)){
             // get all values
@@ -68,7 +68,7 @@ class Consul extends Store
         }
 
         try{
-		    $val = $this->conn->get($this->getRequestPath($type, $key), ['raw' => true]);
+              $val = $this->conn->get($this->getRequestPath($type, $key), ['raw' => true]);
         }catch(\SensioLabs\Consul\Exception\ClientException $ex){
             return null;
         }
@@ -78,8 +78,8 @@ class Consul extends Store
         //     return null;
         // }
 
-		return $this->decodeValue($val->getBody());
-	}
+        return $this->decodeValue($val->getBody());
+     }
 
     private function get_all($type = ""){
         $t = array();
@@ -106,18 +106,18 @@ class Consul extends Store
         return $kv_ix;
     }
 
-	/**
-	 * Save a value to the datastore.
-	 *
-	 * @param string $type  The datatype.
-	 * @param string $key  The key.
-	 * @param mixed $value  The value.
-	 * @param int|NULL $expire  The expiration time (unix timestamp), or NULL if it never expires.
-	 */
-	public function set($type, $key, $value, $expire = NULL) {
-		assert('is_string($type)');
-		assert('is_string($key)');
-		assert('is_null($expire) || (is_int($expire) && $expire > 2592000)');
+     /**
+      * Save a value to the datastore.
+      *
+      * @param string $type  The datatype.
+      * @param string $key  The key.
+      * @param mixed $value  The value.
+      * @param int|NULL $expire  The expiration time (unix timestamp), or NULL if it never expires.
+      */
+     public function set($type, $key, $value, $expire = NULL) {
+        assert('is_string($type)');
+        assert('is_string($key)');
+        assert('is_null($expire) || (is_int($expire) && $expire > 2592000)');
         $encval = $this->encodeValue($key, $value, $expire);
 
         if(strlen($encval) > (512*1024)){
@@ -125,18 +125,18 @@ class Consul extends Store
         }
 
         \SimpleSAML\Logger::debug('Consul: Store '.$type.'/'.$key.' '.strlen($encval).'B');
-		return $this->conn->put($this->getRequestPath($type, $key), $encval);
-	}
+        return $this->conn->put($this->getRequestPath($type, $key), $encval);
+     }
 
-	/**
-	 * Delete a value from the datastore.
-	 *
-	 * @param string $type  The datatype.
-	 * @param string $key  The key.
-	 */
-	public function delete($type, $key) {
-		assert('is_string($type)');
-		assert('is_string($key) || is_null($key)');
+     /**
+      * Delete a value from the datastore.
+      *
+      * @param string $type  The datatype.
+      * @param string $key  The key.
+      */
+     public function delete($type, $key) {
+        assert('is_string($type)');
+        assert('is_string($key) || is_null($key)');
 
         if(is_null($key)){
             // get all values
@@ -151,8 +151,8 @@ class Consul extends Store
 
         \SimpleSAML\Logger::debug('Consul: Delete '.$type.'/'.$key);
 
-		return $this->conn->delete($this->getRequestPath($type, $key));
-	}
+        return $this->conn->delete($this->getRequestPath($type, $key));
+     }
 
     /**
      * Clean the key-value table of expired entries.
