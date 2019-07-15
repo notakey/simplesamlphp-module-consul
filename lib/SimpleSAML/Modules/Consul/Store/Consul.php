@@ -334,7 +334,9 @@ class Consul extends Store
             }
 
             if(md5($payload) != $pl['hash']){
-                $this->delete($type, $key);
+                // TODO
+                // Add custom exception, handle in store driver
+                // $this->delete($type, $key);
                 \SimpleSAML\Logger::debug('Consul: decodeValue '.$pl['hash'].' hash mismatch');
                 throw new \SimpleSAML_Error_Exception("Checksum error for stored data", 8798);
             }
