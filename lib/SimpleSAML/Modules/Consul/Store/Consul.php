@@ -64,16 +64,18 @@ class Consul extends Store
                 $t[$k] = $this->get($type, $ix);
             }
 
+
             return $t;
         }
 
+        $getkey = $this->getRequestPath($type, $key);
         try{
-            $val = $this->conn->get($this->getRequestPath($type, $key), ['raw' => true]);
+            $val = $this->conn->get($getkey, ['raw' => true]);
         }catch(\SensioLabs\Consul\Exception\ClientException $ex){
             return null;
         }
 
-        \SimpleSAML\Logger::debug('Consul: Fetch '.$type.'/'.$key);
+        \SimpleSAML\Logger::debug('Consul: Fetch '.$getkey);
         // if($val->getStatusCode() == 404){
         //     return null;
         // }
@@ -97,10 +99,10 @@ class Consul extends Store
             throw new \SimpleSAML_Error_Exception("Failed index for type $type", 8767);
         }
 
-
         // TODO possible OOM exception here, need custom exception and paged loading
         foreach($kv_ix as $ix=>$v){
             $kv_ix[$ix] = str_replace($path, '', $v);
+            \SimpleSAML\Logger::debug('Consul: get all loaded '.$path.': '.$ix);
         }
 
         return $kv_ix;
@@ -131,15 +133,33 @@ class Consul extends Store
      private function setScalar($type, $key, $value, $expire, $serial = 0){
         $esize = strlen($value);
         $multikey = 0;
-        $mthold = 2048;
+        $mthold = 4096;
+        $hash = md5($value);
+        $old_hash = '';
+        $storekey = $this->getRequestPath($type, $key);
 
         if($esize > $mthold){
             // multi value key
-            $this->delete($type, $key);
+            // $this->delete($type, $key);
+            $oldvalue = null;
+            try{
+                $oldvalue = $this->conn->get($this->getRequestPath($type, $key), ['raw' => true]);
+            }catch(\SensioLabs\Consul\Exception\ClientException $ex){
+                // intentionally blank
+            }
+
+            if($oldvalue != null){
+                $old = $oldvalue->json();
+                $old_hash = $old['hash'];
+                \SimpleSAML\Logger::debug('Consul: Got '.$storekey.' old hash '.$old_hash);
+            }
+
             $value = base64_encode($value);
             $chunks = str_split($value, $mthold);
             while(list($ix, $chunk) = each($chunks)){
-                $this->setScalar($this->mergePath($type, $this->getNestedKey($key)), strval($ix), $chunk, $expire, 1);
+                $subkey = $this->mergePath($this->mergePath($type, $this->getNestedKey($key)), $hash);
+                \SimpleSAML\Logger::debug('Consul: Store '.$subkey.' multi key '.strlen($chunk).'B');
+                $this->setScalar($subkey, strval($ix), $chunk, $expire, 1);
             }
 
             $value = count($chunks);
@@ -147,7 +167,7 @@ class Consul extends Store
             $serial = 1;
         }
 
-        $encval = $this->encodeValue($key, $value, $expire, $multikey, $serial);
+        $encval = $this->encodeValue($key, $value, $expire, $multikey, $serial, $hash, $old_hash);
 
 
         // if($esize > (10*1024))
@@ -157,8 +177,16 @@ class Consul extends Store
         //     throw new \SimpleSAML_Session_Too_Big_Exception("Playload for key $type/$key exceeds limit", 8765);
         // }
 
-        \SimpleSAML\Logger::debug('Consul: Store '.$type.'/'.$key.' '.$esize.'B');
-        return $this->conn->put($this->getRequestPath($type, $key), $encval);
+        \SimpleSAML\Logger::debug('Consul: Store '.$storekey.' '.$esize.'B');
+        $retval = $this->conn->put($storekey, $encval);
+
+        if($multikey == 1 && $old_hash != ''){
+            $delkey = $this->mergePath($this->mergePath($type, $this->getNestedKey($key)), $old_hash);
+            \SimpleSAML\Logger::debug('Consul: Delete old hash '.$delkey);
+            $this->conn->delete($delkey, array('recurse' => true));
+        }
+
+        return $retval;
      }
 
      /**
@@ -210,7 +238,7 @@ class Consul extends Store
             }
         }
 
-        Logger::debug("store.consul: Cleanup complete, $delc items removed");
+        \SimpleSAML\Logger::debug("store.consul: Cleanup complete, $delc items removed");
 
     }
 
@@ -228,9 +256,20 @@ class Consul extends Store
 
     public function mergePath($root, $key)
     {
+        if(substr($root, -1, 1) == '/'){
+            $root = substr($root, 0, -1);
+        }
 
-        if(is_null($key) || $key == ""){
+        if(is_null($key) || $key === ""){
             return $root;
+        }
+
+        if(substr($key, -1, 1) == '/'){
+            $key = substr($key, 0, -1);
+        }
+
+        if(substr($key, 0, 1) == '/'){
+            $key = substr($key, 1);
         }
 
         return "$root/$key";
@@ -249,9 +288,25 @@ class Consul extends Store
         return unserialize($value);
     }
 
-    private function encodeValue($key, $val, $expire = 0, $multikey = 0, $serialData = 0){
+    private function encodeValue($key, $val, $expire = 0, $multikey = 0, $serialData = 0, $hash = '', $old_hash = ''){
 
-        $v = ['created_at_str' => date("c"), 'keyname' => $key, 'expires' => $expire, 'payload' => $val, 'multi' => $multikey, 'serial' => $serialData];
+        $v = [
+                'created_at_str' => date("c"),
+                'keyname' => $key,
+                'expires' => $expire,
+                'hash' => '',
+                'multi' => $multikey,
+                'serial' => $serialData,
+                'payload' => $val
+            ];
+
+        if($hash != ''){
+            $v['hash'] = $hash;
+        }
+
+        if($old_hash != ''){
+            $v['old_hash'] = $old_hash;
+        }
 
         return json_encode($v);
     }
@@ -270,13 +325,20 @@ class Consul extends Store
         }
 
         if(@$pl['multi'] == 1){
-            $chunks = $this->get($this->mergePath($type, $this->getNestedKey($key)), null);
+            $chunks = $this->get($this->mergePath($this->mergePath($type, $this->getNestedKey($key)), $pl['hash']), null);
             $ccount = intval($payload);
 
             $payload = "";
             for($i = 0; $i < $ccount; $i++){
                 $payload .= base64_decode($chunks[$i]);
             }
+
+            if(md5($payload) != $pl['hash']){
+                $this->delete($type, $key);
+                \SimpleSAML\Logger::debug('Consul: decodeValue '.$pl['hash'].' hash mismatch');
+                throw new \SimpleSAML_Error_Exception("Checksum error for stored data", 8798);
+            }
+
             $payload = $this->unserialize($payload);
         }
 
