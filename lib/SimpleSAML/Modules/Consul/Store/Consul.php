@@ -68,7 +68,7 @@ class Consul extends Store
         }
 
         try{
-              $val = $this->conn->get($this->getRequestPath($type, $key), ['raw' => true]);
+            $val = $this->conn->get($this->getRequestPath($type, $key), ['raw' => true]);
         }catch(\SensioLabs\Consul\Exception\ClientException $ex){
             return null;
         }
@@ -78,7 +78,7 @@ class Consul extends Store
         //     return null;
         // }
 
-        return $this->decodeValue($val->getBody());
+        return $this->decodeValue($type, $key, $val->getBody());
      }
 
     private function get_all($type = ""){
@@ -118,15 +118,44 @@ class Consul extends Store
         assert('is_string($type)');
         assert('is_string($key)');
         assert('is_null($expire) || (is_int($expire) && $expire > 2592000)');
-        $encval = $this->encodeValue($key, $value, $expire);
-        $esize = strlen($encval);
 
-        if($esize > (10*1024))
-            \SimpleSAML\Logger::warning('Consul: Store '.$type.'/'.$key.' '.ceil($esize/1024)."kB");
+        $payload = $this->serialize($value);
 
-        if($esize > (512*1024)){
-            throw new \SimpleSAML_Session_Too_Big_Exception("Playload for key $type/$key exceeds limit", 8765);
+        $this->setScalar($type, $key, $payload, $expire, 0);
+     }
+
+     private function getNestedKey($key){
+         return "$key-data";
+     }
+
+     private function setScalar($type, $key, $value, $expire, $serial = 0){
+        $esize = strlen($value);
+        $multikey = 0;
+        $mthold = 2048;
+
+        if($esize > $mthold){
+            // multi value key
+            $this->delete($type, $key);
+            $value = base64_encode($value);
+            $chunks = str_split($value, $mthold);
+            while(list($ix, $chunk) = each($chunks)){
+                $this->setScalar($this->mergePath($type, $this->getNestedKey($key)), strval($ix), $chunk, $expire, 1);
+            }
+
+            $value = count($chunks);
+            $multikey = 1;
+            $serial = 1;
         }
+
+        $encval = $this->encodeValue($key, $value, $expire, $multikey, $serial);
+
+
+        // if($esize > (10*1024))
+        //     \SimpleSAML\Logger::warning('Consul: Store '.$type.'/'.$key.' '.ceil($esize/1024)."kB");
+
+        // if($esize > (512*1024)){
+        //     throw new \SimpleSAML_Session_Too_Big_Exception("Playload for key $type/$key exceeds limit", 8765);
+        // }
 
         \SimpleSAML\Logger::debug('Consul: Store '.$type.'/'.$key.' '.$esize.'B');
         return $this->conn->put($this->getRequestPath($type, $key), $encval);
@@ -154,7 +183,7 @@ class Consul extends Store
         }
 
         \SimpleSAML\Logger::debug('Consul: Delete '.$type.'/'.$key);
-
+        $this->conn->delete($this->getRequestPath($type, $this->getNestedKey($key)), array('recurse' => true));
         return $this->conn->delete($this->getRequestPath($type, $key));
      }
 
@@ -212,20 +241,46 @@ class Consul extends Store
         return $this->mergePath($this->mergePath($this->getPrefix(), $root), $key);
     }
 
-    private function encodeValue($key, $val, $expire = 0){
-        $v = ['created_at_str' => date("c"), 'keyname' => $key, 'expires' => $expire, 'payload' => serialize($val)];
+    private function serialize($value){
+        return serialize($value);
+    }
+
+    private function unserialize($value){
+        return unserialize($value);
+    }
+
+    private function encodeValue($key, $val, $expire = 0, $multikey = 0, $serialData = 0){
+
+        $v = ['created_at_str' => date("c"), 'keyname' => $key, 'expires' => $expire, 'payload' => $val, 'multi' => $multikey, 'serial' => $serialData];
 
         return json_encode($v);
     }
 
-    private function decodeValue($val){
+    private function decodeValue($type, $key, $val){
         $pl = json_decode($val, true);
 
         if($pl['expires'] > 0 && $pl['expires'] < time()){
             return null;
         }
 
-        return unserialize($pl['payload']);
+        $payload = $pl['payload'];
+
+        if(@$pl['serial'] == 0){
+            $payload = $this->unserialize($payload);
+        }
+
+        if(@$pl['multi'] == 1){
+            $chunks = $this->get($this->mergePath($type, $this->getNestedKey($key)), null);
+            $ccount = intval($payload);
+
+            $payload = "";
+            for($i = 0; $i < $ccount; $i++){
+                $payload .= base64_decode($chunks[$i]);
+            }
+            $payload = $this->unserialize($payload);
+        }
+
+        return $payload;
     }
 
 }
