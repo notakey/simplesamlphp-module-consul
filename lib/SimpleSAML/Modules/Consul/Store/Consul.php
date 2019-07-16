@@ -75,7 +75,7 @@ class Consul extends Store
             return null;
         }
 
-        \SimpleSAML\Logger::debug('Consul: Fetch '.$getkey);
+        Logger::debug('Consul: Fetch '.$getkey);
         // if($val->getStatusCode() == 404){
         //     return null;
         // }
@@ -102,7 +102,7 @@ class Consul extends Store
         // TODO possible OOM exception here, need custom exception and paged loading
         foreach($kv_ix as $ix=>$v){
             $kv_ix[$ix] = str_replace($path, '', $v);
-            \SimpleSAML\Logger::debug('Consul: get all loaded '.$path.': '.$ix);
+            Logger::debug('Consul: get all loaded '.$path.': '.$ix.', '.$kv_ix[$ix]);
         }
 
         return $kv_ix;
@@ -151,14 +151,14 @@ class Consul extends Store
             if($oldvalue != null){
                 $old = $oldvalue->json();
                 $old_hash = $old['hash'];
-                \SimpleSAML\Logger::debug('Consul: Got '.$storekey.' old hash '.$old_hash);
+                Logger::debug('Consul: Got '.$storekey.' old hash '.$old_hash);
             }
 
             $value = base64_encode($value);
             $chunks = str_split($value, $mthold);
             while(list($ix, $chunk) = each($chunks)){
                 $subkey = $this->mergePath($this->mergePath($type, $this->getNestedKey($key)), $hash);
-                \SimpleSAML\Logger::debug('Consul: Store '.$subkey.' multi key '.strlen($chunk).'B');
+                Logger::debug('Consul: Store '.$subkey.' multi key '.strlen($chunk).'B');
                 $this->setScalar($subkey, strval($ix), $chunk, $expire, 1);
             }
 
@@ -171,18 +171,18 @@ class Consul extends Store
 
 
         // if($esize > (10*1024))
-        //     \SimpleSAML\Logger::warning('Consul: Store '.$type.'/'.$key.' '.ceil($esize/1024)."kB");
+        //     Logger::warning('Consul: Store '.$type.'/'.$key.' '.ceil($esize/1024)."kB");
 
         // if($esize > (512*1024)){
         //     throw new \SimpleSAML_Session_Too_Big_Exception("Playload for key $type/$key exceeds limit", 8765);
         // }
 
-        \SimpleSAML\Logger::debug('Consul: Store '.$storekey.' '.$esize.'B');
+        Logger::debug('Consul: Store '.$storekey.' '.$esize.'B');
         $retval = $this->conn->put($storekey, $encval);
 
         if($multikey == 1 && $old_hash != ''){
             $delkey = $this->mergePath($this->mergePath($type, $this->getNestedKey($key)), $old_hash);
-            \SimpleSAML\Logger::debug('Consul: Delete old hash '.$delkey);
+            Logger::debug('Consul: Delete old hash '.$delkey);
             $this->conn->delete($delkey, array('recurse' => true));
         }
 
@@ -210,7 +210,7 @@ class Consul extends Store
             return $this->conn->delete($this->getRequestPath($type));
         }
 
-        \SimpleSAML\Logger::debug('Consul: Delete '.$type.'/'.$key);
+        Logger::debug('Consul: Delete '.$type.'/'.$key);
         $this->conn->delete($this->getRequestPath($type, $this->getNestedKey($key)), array('recurse' => true));
         return $this->conn->delete($this->getRequestPath($type, $key));
      }
@@ -220,6 +220,7 @@ class Consul extends Store
      */
     public function cleanKVStore()
     {
+        // No namespace here
         Logger::debug('store.consul: Cleaning key-value store.');
 
         $kvarr = $this->get_all("");
@@ -238,8 +239,8 @@ class Consul extends Store
             }
         }
 
-        \SimpleSAML\Logger::debug("store.consul: Cleanup complete, $delc items removed");
-
+        // No namespace here
+        Logger::debug("store.consul: Cleanup complete, $delc items removed");
     }
 
     public function createQueryBuilder(){
@@ -337,7 +338,7 @@ class Consul extends Store
                 // TODO
                 // Add custom exception, handle in store driver
                 // $this->delete($type, $key);
-                \SimpleSAML\Logger::debug('Consul: decodeValue '.$pl['hash'].' hash mismatch');
+                Logger::debug('Consul: decodeValue '.$pl['hash'].' hash mismatch');
                 throw new \SimpleSAML_Error_Exception("Checksum error for stored data", 8798);
             }
 
