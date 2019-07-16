@@ -133,10 +133,17 @@ class Consul extends Store
      private function setScalar($type, $key, $value, $expire, $serial = 0){
         $esize = strlen($value);
         $multikey = 0;
-        $mthold = 4096;
+        $mthold = 1024*500;
         $hash = md5($value);
         $old_hash = '';
         $storekey = $this->getRequestPath($type, $key);
+
+
+        if($esize > $mthold*50){
+            \SimpleSAML\Logger::error('Consul: setScalar '.$this->getRequestPath($type, $key).' exceeds limit ('.$esize.' vs. '.($mthold*50).'), key deleted');
+            $this->delete($type, $key);
+            throw new \SimpleSAML_Error_Exception("Playload for key ".$this->getRequestPath($type, $key)." exceeds limit", 8765);
+        }
 
         if($esize > $mthold){
             // multi value key
@@ -168,14 +175,6 @@ class Consul extends Store
         }
 
         $encval = $this->encodeValue($key, $value, $expire, $multikey, $serial, $hash, $old_hash);
-
-
-        // if($esize > (10*1024))
-        //     \SimpleSAML\Logger::warning('Consul: Store '.$type.'/'.$key.' '.ceil($esize/1024)."kB");
-
-        // if($esize > (512*1024)){
-        //     throw new \SimpleSAML_Session_Too_Big_Exception("Playload for key $type/$key exceeds limit", 8765);
-        // }
 
         \SimpleSAML\Logger::debug('Consul: Store '.$storekey.' '.$esize.'B');
         $retval = $this->conn->put($storekey, $encval);
@@ -334,7 +333,7 @@ class Consul extends Store
             }
 
             if(md5($payload) != $pl['hash']){
-                \SimpleSAML\Logger::error('Consul: decodeValue '.$this->mergePath($type, $key).' checksum mismatch ('.$pl['hash'].'), key deleted ');
+                \SimpleSAML\Logger::error('Consul: decodeValue '.$this->getRequestPath($type, $key).' checksum mismatch ('.$pl['hash'].'), key deleted ');
                 $this->delete($type, $key);
                 throw new \SimpleSAML_Error_Exception("Checksum error for stored data", 8798);
             }
