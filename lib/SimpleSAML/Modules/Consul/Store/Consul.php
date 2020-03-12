@@ -17,6 +17,13 @@ class Consul extends Store
     private $prefix;
 
     /**
+     * Allow usage of multikey values.
+     *
+     * @var bool
+     */
+    private $multikey = true;
+
+    /**
      * Service Factory
      */
     private $sf;
@@ -34,6 +41,8 @@ class Consul extends Store
         $consulconfig = \SimpleSAML_Configuration::getConfig('module_consul.php');
 
         $this->prefix = $consulconfig->getString('kv_prefix', 'sso');
+        $this->multikey = $consulconfig->getBoolean('multikey', true);
+
         $url = $consulconfig->getString('kv_url', 'http://localhost:8500');
 
         $this->sf = new \SensioLabs\Consul\ServiceFactory(['base_uri' => $url]);
@@ -144,13 +153,13 @@ class Consul extends Store
         $storekey = $this->getRequestPath($type, $key);
 
 
-        if ($esize > $mthold * 50) {
+        if ($esize > $mthold * 50 || (!$this->multikey && $esize > $mthold)) {
             \SimpleSAML\Logger::error('Consul: setScalar ' . $this->getRequestPath($type, $key) . ' exceeds limit (' . $esize . ' vs. ' . ($mthold * 50) . '), key deleted');
             $this->delete($type, $key);
             throw new \SimpleSAML_Error_Exception("Playload for key " . $this->getRequestPath($type, $key) . " exceeds limit", 8765);
         }
 
-        if ($esize > $mthold) {
+        if ($this->multikey && $esize > $mthold) {
             // multi value key
             // $this->delete($type, $key);
             $oldvalue = null;
@@ -334,6 +343,11 @@ class Consul extends Store
 
         if (@$pl['serial'] == 0) {
             $payload = $this->unserialize($payload);
+        }
+
+        if (!$this->multikey && @$pl['multi'] == 1) {
+            // Multikey is not allowed, but value stored in this format
+            return null;
         }
 
         if (@$pl['multi'] == 1) {
