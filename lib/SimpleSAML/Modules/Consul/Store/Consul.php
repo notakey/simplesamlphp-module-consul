@@ -154,7 +154,7 @@ class Consul extends Store
         $storekey = $this->getRequestPath($type, $key);
 
 
-        if ($esize > $mthold * 50 || (!$this->multikey && $esize > $mthold)) {
+        if ($esize > $mthold * 10 || (!$this->multikey && $esize > $mthold)) {
             \SimpleSAML\Logger::error('Consul: setScalar ' . $this->getRequestPath($type, $key) . ' exceeds limit (' . $esize . ' vs. ' . ($mthold * 50) . '), key deleted');
             $this->delete($type, $key);
             throw new \SimpleSAML_Error_Exception("Playload for key " . $this->getRequestPath($type, $key) . " exceeds limit", 8765);
