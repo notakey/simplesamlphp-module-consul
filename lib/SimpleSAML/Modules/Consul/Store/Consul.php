@@ -134,6 +134,7 @@ class Consul extends Store
         assert('is_null($expire) || (is_int($expire) && $expire > 2592000)');
 
         $payload = $this->serialize($value);
+        Logger::debug('Consul: Store ' . $type . '/' . $key . ' serialized ' . strlen($payload) . 'B');
 
         $this->setScalar($type, $key, $payload, $expire, 0);
     }
