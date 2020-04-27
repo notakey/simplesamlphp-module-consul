@@ -38,7 +38,7 @@ class Consul extends Store
      */
     protected function __construct()
     {
-        $consulconfig = \SimpleSAML_Configuration::getConfig('module_consul.php');
+        $consulconfig = \SimpleSAML\Configuration::getConfig('module_consul.php');
 
         $this->prefix = $consulconfig->getString('kv_prefix', 'sso');
         $this->multikey = $consulconfig->getBoolean('multikey', true);
