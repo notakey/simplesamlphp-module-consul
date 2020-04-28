@@ -10,7 +10,7 @@
     }],
     "autoload": {
         "psr-0": {
-            "SimpleSAML\\Modules\\Consul\\": "lib"
+            "SimpleSAML\\Module\\consul\\": "lib"
         }
     },
     "require": {

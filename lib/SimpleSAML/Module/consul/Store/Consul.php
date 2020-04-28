@@ -1,6 +1,6 @@
 <?php
 
-namespace SimpleSAML\Modules\Consul\Store;
+namespace SimpleSAML\Module\consul\Store;
 
 use SensioLabs\Consul\ServiceFactory;
 use SensioLabs\Consul\Services;
