@@ -50,7 +50,7 @@ class Consul extends Store
         try {
             $this->conn = $this->sf->get('kv');
         } catch (Exception $ex) {
-            throw new \SimpleSAML_Error_Exception("Cannot initialize KV store, verify that kv_url is configured", 8764);
+            throw new \SimpleSAML\Error\Exception("Cannot initialize KV store, verify that kv_url is configured", 8764);
         }
     }
 
@@ -107,7 +107,7 @@ class Consul extends Store
         $kv_ix = json_decode($val->getBody(), true);
 
         if (!is_array($kv_ix)) {
-            throw new \SimpleSAML_Error_Exception("Failed index for type $type", 8767);
+            throw new \SimpleSAML\Error\Exception("Failed index for type $type", 8767);
         }
 
         // TODO possible OOM exception here, need custom exception and paged loading
@@ -157,7 +157,7 @@ class Consul extends Store
         if ($esize > $mthold * 10 || (!$this->multikey && $esize > $mthold)) {
             \SimpleSAML\Logger::error('Consul: setScalar ' . $this->getRequestPath($type, $key) . ' exceeds limit (' . $esize . ' vs. ' . ($mthold * 50) . '), key deleted');
             $this->delete($type, $key);
-            throw new \SimpleSAML_Error_Exception("Playload for key " . $this->getRequestPath($type, $key) . " exceeds limit", 8765);
+            throw new \SimpleSAML\Error\Exception("Playload for key " . $this->getRequestPath($type, $key) . " exceeds limit", 8765);
         }
 
         if ($this->multikey && $esize > $mthold) {
@@ -260,7 +260,7 @@ class Consul extends Store
 
     public function createQueryBuilder()
     {
-        throw new \SimpleSAML_Error_Exception("KV based data persistence drivers do not support queries. Please rewrite module to use KV.", 8799);
+        throw new \SimpleSAML\Error\Exception("KV based data persistence drivers do not support queries. Please rewrite module to use KV.", 8799);
     }
 
     /**
@@ -363,7 +363,7 @@ class Consul extends Store
             if (md5($payload) != $pl['hash']) {
                 \SimpleSAML\Logger::error('Consul: decodeValue ' . $this->getRequestPath($type, $key) . ' checksum mismatch (' . $pl['hash'] . '), key deleted ');
                 $this->delete($type, $key);
-                throw new \SimpleSAML_Error_Exception("Checksum error for stored data", 8798);
+                throw new \SimpleSAML\Error\Exception("Checksum error for stored data", 8798);
             }
 
             $payload = $this->unserialize($payload);
