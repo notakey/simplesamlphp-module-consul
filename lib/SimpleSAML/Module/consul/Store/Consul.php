@@ -49,7 +49,7 @@ class Consul extends Store
 
         try {
             $this->conn = $this->sf->get('kv');
-        } catch (Exception $ex) {
+        } catch (\Exception $ex) {
             throw new \SimpleSAML\Error\Exception("Cannot initialize KV store, verify that kv_url is configured", 8764);
         }
     }
@@ -178,7 +178,7 @@ class Consul extends Store
 
             $value = base64_encode($value);
             $chunks = str_split($value, $mthold);
-            while (list($ix, $chunk) = each($chunks)) {
+            foreach ($chunks as $ix => $chunk) {
                 $subkey = $this->mergePath($this->mergePath($type, $this->getNestedKey($key)), $hash);
                 Logger::debug('Consul: Store ' . $subkey . ' multi key ' . strlen($chunk) . 'B');
                 $this->setScalar($subkey, strval($ix), $chunk, $expire, 1);
@@ -192,12 +192,24 @@ class Consul extends Store
         $encval = $this->encodeValue($key, $value, $expire, $multikey, $serial, $hash, $old_hash);
 
         \SimpleSAML\Logger::debug('Consul: Store ' . $storekey . ' ' . $esize . 'B');
-        $retval = $this->conn->put($storekey, $encval);
+
+        try {
+            $retval = $this->conn->put($storekey, $encval);
+        } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+            Logger::error('Consul: Set ' . $storekey . " failure");
+            throw new \SimpleSAML\Error\Exception("KV Store set error.", 8596);
+        }
 
         if ($multikey == 1 && $old_hash != '') {
             $delkey = $this->mergePath($this->mergePath($type, $this->getNestedKey($key)), $old_hash);
             Logger::debug('Consul: Delete old hash ' . $delkey);
-            $this->conn->delete($delkey, array('recurse' => true));
+
+            try {
+                $this->conn->delete($delkey, array('recurse' => true));
+            } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+                Logger::error('Consul: Delete ' . $delkey . " failure, recurse = true");
+                throw new \SimpleSAML\Error\Exception("KV Store delete error.", 8597);
+            }
         }
 
         return $retval;
@@ -222,12 +234,28 @@ class Consul extends Store
                 $t[$k] = $this->delete($type, $ix);
             }
 
-            return $this->conn->delete($this->getRequestPath($type));
+            try {
+                return $this->conn->delete($this->getRequestPath($type));
+            } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+                Logger::error('Consul: Delete ' . $this->getRequestPath($type) . " failure");
+                throw new \SimpleSAML\Error\Exception("KV Store delete error.", 8599);
+            }
         }
 
         Logger::debug('Consul: Delete ' . $type . '/' . $key);
-        $this->conn->delete($this->getRequestPath($type, $this->getNestedKey($key)), array('recurse' => true));
-        return $this->conn->delete($this->getRequestPath($type, $key));
+
+        try {
+            $this->conn->delete($this->getRequestPath($type, $this->getNestedKey($key)), array('recurse' => true));
+        } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+            // intentionally blank
+        }
+
+        try {
+            return $this->conn->delete($this->getRequestPath($type, $key));
+        } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+            Logger::error('Consul: Delete ' . $this->getRequestPath($type, $key) . " failure");
+            throw new \SimpleSAML\Error\Exception("KV Store delete error.", 8599);
+        }
     }
 
     /**
@@ -241,15 +269,21 @@ class Consul extends Store
         $kvarr = $this->get_all("");
         $delc = 0;
         foreach ($kvarr as $t) {
+
+            list($type, $key) = explode("/", $t, 2);
+
             try {
-                list($type, $key) = explode("/", $t, 2);
                 $val = $this->conn->get($this->getRequestPath($type, $key), ['raw' => true]);
                 $v = json_decode($val->getBody(), true);
                 if ($v['expires'] > 0 && $v['expires'] < time()) {
                     $this->delete($type, $key);
                     $delc++;
                 }
-            } catch (Exception $ex) {
+            } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+                Logger::debug('store.consul: cleanKVStore error for ' . $this->getRequestPath($type, $key) . ': ' . $ex->getMessage() . '.');
+                continue;
+            } catch (\Exception $ex) {
+                Logger::debug('store.consul: cleanKVStore error: ' . $ex->getMessage() . '.');
                 continue;
             }
         }
