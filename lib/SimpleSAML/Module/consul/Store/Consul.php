@@ -41,7 +41,7 @@ class Consul extends Store
         $consulconfig = \SimpleSAML\Configuration::getConfig('module_consul.php');
 
         $this->prefix = $consulconfig->getString('kv_prefix', 'sso');
-        $this->multikey = $consulconfig->getBoolean('multikey', true);
+        $this->multikey = $consulconfig->getBoolean('multikey', false);
 
         $url = $consulconfig->getString('kv_url', 'http://localhost:8500');
 
