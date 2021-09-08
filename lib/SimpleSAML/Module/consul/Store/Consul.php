@@ -36,7 +36,7 @@ class Consul extends Store
     /**
      * Initialize the SQL datastore.
      */
-    protected function __construct()
+    public function __construct()
     {
         $consulconfig = \SimpleSAML\Configuration::getConfig('module_consul.php');
 
