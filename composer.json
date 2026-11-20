@@ -9,13 +9,19 @@
         "email": "ingemars.asmanis@notakey.com"
     }],
     "autoload": {
-        "psr-0": {
-            "SimpleSAML\\Module\\consul\\": "lib"
+        "psr-4": {
+            "SimpleSAML\\Module\\consul\\": "src/"
         }
     },
     "require": {
-        "php": ">=5.5.9",
-        "simplesamlphp/composer-module-installer": "^1.0",
-        "sensiolabs/consul-php-sdk": "^3.1"
+        "php": "^8.3",
+        "simplesamlphp/composer-module-installer": "^1.7",
+        "simplesamlphp/simplesamlphp": "^2.5",
+        "friendsofphp/consul-php-sdk": "^5.4"
+    },
+    "config": {
+        "allow-plugins": {
+            "simplesamlphp/composer-module-installer": true
+        }
     }
 }
