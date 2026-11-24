@@ -1,56 +1,55 @@
 <?php
 
+declare(strict_types=1);
+
 namespace SimpleSAML\Module\consul\Store;
 
-use SensioLabs\Consul\ServiceFactory;
-use SensioLabs\Consul\Services;
+use Consul\Client;
+use Consul\Exception\ClientException;
+use Consul\Services\KV;
+use SimpleSAML\Configuration;
+use SimpleSAML\Error;
 use SimpleSAML\Logger;
-use SimpleSAML\Store;
+use SimpleSAML\Store\StoreInterface;
 
-class Consul extends Store
+/**
+ * Consul KV backed data store.
+ *
+ * Use as 'store.type' => 'SimpleSAML\Module\consul\Store\Consul' in config.php.
+ */
+class Consul implements StoreInterface
 {
     /**
-     * The prefix we should use for our tables.
-     *
-     * @var string
+     * The prefix we should use for our keys.
      */
-    private $prefix;
+    private string $prefix;
 
     /**
      * Allow usage of multikey values.
-     *
-     * @var bool
      */
-    private $multikey = true;
-
-    /**
-     * Service Factory
-     */
-    private $sf;
+    private bool $multikey = true;
 
     /**
      * KV connection.
      */
-    private $conn;
+    private KV $conn;
 
     /**
-     * Initialize the SQL datastore.
+     * Initialize the Consul datastore.
      */
     public function __construct()
     {
-        $consulconfig = \SimpleSAML\Configuration::getConfig('module_consul.php');
+        $consulconfig = Configuration::getConfig('module_consul.php');
 
-        $this->prefix = $consulconfig->getString('kv_prefix', 'sso');
-        $this->multikey = $consulconfig->getBoolean('multikey', false);
+        $this->prefix = $consulconfig->getOptionalString('kv_prefix', 'sso');
+        $this->multikey = $consulconfig->getOptionalBoolean('multikey', false);
 
-        $url = $consulconfig->getString('kv_url', 'http://localhost:8500');
-
-        $this->sf = new \SensioLabs\Consul\ServiceFactory(['base_uri' => $url]);
+        $url = $consulconfig->getOptionalString('kv_url', 'http://localhost:8500');
 
         try {
-            $this->conn = $this->sf->get('kv');
+            $this->conn = new KV(new Client(['base_uri' => $url]));
         } catch (\Exception $ex) {
-            throw new \SimpleSAML\Error\Exception("Cannot initialize KV store, verify that kv_url is configured", 8764);
+            throw new Error\Exception("Cannot initialize KV store, verify that kv_url is configured", 8764);
         }
     }
 
@@ -59,21 +58,25 @@ class Consul extends Store
      *
      * @param string $type  The datatype.
      * @param string $key  The key.
-     * @return mixed|NULL  The value.
+     * @return mixed|null  The value.
      */
-    public function get($type, $key)
+    public function get(string $type, string $key): mixed
     {
-        assert('is_string($type)');
-        assert('is_string($key) || is_null($key)');
+        return $this->getValue($type, $key);
+    }
 
+    /**
+     * Retrieve a value, or all values of a type when $key is null.
+     */
+    private function getValue(string $type, ?string $key): mixed
+    {
         if (is_null($key)) {
             // get all values
-            $t = array();
+            $t = [];
             $kv_ix = $this->get_all($type);
             foreach ($kv_ix as $k => $ix) {
-                $t[$k] = $this->get($type, $ix);
+                $t[$k] = $this->getValue($type, $ix);
             }
-
 
             return $t;
         }
@@ -81,7 +84,7 @@ class Consul extends Store
         $getkey = $this->getRequestPath($type, $key);
         try {
             $val = $this->conn->get($getkey, ['raw' => true]);
-        } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+        } catch (ClientException $ex) {
             return null;
         }
 
@@ -95,19 +98,19 @@ class Consul extends Store
 
     private function get_all($type = "")
     {
-        $t = array();
+        $t = [];
 
         $path = $this->getRequestPath($type);
         try {
             $val = $this->conn->get($path, ['keys' => true]);
-        } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+        } catch (ClientException $ex) {
             return $t;
         }
 
         $kv_ix = json_decode($val->getBody(), true);
 
         if (!is_array($kv_ix)) {
-            throw new \SimpleSAML\Error\Exception("Failed index for type $type", 8767);
+            throw new Error\Exception("Failed index for type $type", 8767);
         }
 
         // TODO possible OOM exception here, need custom exception and paged loading
@@ -127,12 +130,8 @@ class Consul extends Store
      * @param mixed $value  The value.
      * @param int|NULL $expire  The expiration time (unix timestamp), or NULL if it never expires.
      */
-    public function set($type, $key, $value, $expire = NULL)
+    public function set(string $type, string $key, mixed $value, ?int $expire = null): void
     {
-        assert('is_string($type)');
-        assert('is_string($key)');
-        assert('is_null($expire) || (is_int($expire) && $expire > 2592000)');
-
         $payload = $this->serialize($value);
         Logger::debug('Consul: Store ' . $type . '/' . $key . ' serialized ' . strlen($payload) . 'B');
 
@@ -155,9 +154,9 @@ class Consul extends Store
 
 
         if ($esize > $mthold * 10 || (!$this->multikey && $esize > $mthold)) {
-            \SimpleSAML\Logger::error('Consul: setScalar ' . $this->getRequestPath($type, $key) . ' exceeds limit (' . $esize . ' vs. ' . ($mthold * 50) . '), key deleted');
+            Logger::error('Consul: setScalar ' . $this->getRequestPath($type, $key) . ' exceeds limit (' . $esize . ' vs. ' . ($mthold * 50) . '), key deleted');
             $this->delete($type, $key);
-            throw new \SimpleSAML\Error\Exception("Playload for key " . $this->getRequestPath($type, $key) . " exceeds limit", 8765);
+            throw new Error\Exception("Playload for key " . $this->getRequestPath($type, $key) . " exceeds limit", 8765);
         }
 
         if ($this->multikey && $esize > $mthold) {
@@ -166,7 +165,7 @@ class Consul extends Store
             $oldvalue = null;
             try {
                 $oldvalue = $this->conn->get($this->getRequestPath($type, $key), ['raw' => true]);
-            } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+            } catch (ClientException $ex) {
                 // intentionally blank
             }
 
@@ -191,13 +190,13 @@ class Consul extends Store
 
         $encval = $this->encodeValue($key, $value, $expire, $multikey, $serial, $hash, $old_hash);
 
-        \SimpleSAML\Logger::debug('Consul: Store ' . $storekey . ' ' . $esize . 'B');
+        Logger::debug('Consul: Store ' . $storekey . ' ' . $esize . 'B');
 
         try {
             $retval = $this->conn->put($storekey, $encval);
-        } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+        } catch (ClientException $ex) {
             Logger::error('Consul: Set ' . $storekey . " failure");
-            throw new \SimpleSAML\Error\Exception("KV Store set error.", 8596);
+            throw new Error\Exception("KV Store set error.", 8596);
         }
 
         if ($multikey == 1 && $old_hash != '') {
@@ -205,10 +204,10 @@ class Consul extends Store
             Logger::debug('Consul: Delete old hash ' . $delkey);
 
             try {
-                $this->conn->delete($delkey, array('recurse' => true));
-            } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+                $this->conn->delete($delkey, ['recurse' => true]);
+            } catch (ClientException $ex) {
                 Logger::error('Consul: Delete ' . $delkey . " failure, recurse = true");
-                throw new \SimpleSAML\Error\Exception("KV Store delete error.", 8597);
+                throw new Error\Exception("KV Store delete error.", 8597);
             }
         }
 
@@ -221,47 +220,51 @@ class Consul extends Store
      * @param string $type  The datatype.
      * @param string $key  The key.
      */
-    public function delete($type, $key)
+    public function delete(string $type, string $key): void
     {
-        assert('is_string($type)');
-        assert('is_string($key) || is_null($key)');
+        $this->deleteValue($type, $key);
+    }
 
+    /**
+     * Delete a value, or all values of a type when $key is null.
+     */
+    private function deleteValue(string $type, ?string $key): mixed
+    {
         if (is_null($key)) {
-            // get all values
-            $t = array();
+            // delete all values
             $kv_ix = $this->get_all($type);
-            foreach ($kv_ix as $k => $ix) {
-                $t[$k] = $this->delete($type, $ix);
+            foreach ($kv_ix as $ix) {
+                $this->deleteValue($type, $ix);
             }
 
             try {
                 return $this->conn->delete($this->getRequestPath($type));
-            } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+            } catch (ClientException $ex) {
                 Logger::error('Consul: Delete ' . $this->getRequestPath($type) . " failure");
-                throw new \SimpleSAML\Error\Exception("KV Store delete error.", 8599);
+                throw new Error\Exception("KV Store delete error.", 8599);
             }
         }
 
         Logger::debug('Consul: Delete ' . $type . '/' . $key);
 
         try {
-            $this->conn->delete($this->getRequestPath($type, $this->getNestedKey($key)), array('recurse' => true));
-        } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+            $this->conn->delete($this->getRequestPath($type, $this->getNestedKey($key)), ['recurse' => true]);
+        } catch (ClientException $ex) {
             // intentionally blank
         }
 
         try {
             return $this->conn->delete($this->getRequestPath($type, $key));
-        } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+        } catch (ClientException $ex) {
             Logger::error('Consul: Delete ' . $this->getRequestPath($type, $key) . " failure");
-            throw new \SimpleSAML\Error\Exception("KV Store delete error.", 8599);
+            throw new Error\Exception("KV Store delete error.", 8599);
         }
     }
 
     /**
      * Clean the key-value table of expired entries.
      */
-    public function cleanKVStore()
+    public function cleanKVStore(): void
     {
         // No namespace here
         Logger::debug('store.consul: Cleaning key-value store.');
@@ -269,8 +272,11 @@ class Consul extends Store
         $kvarr = $this->get_all("");
         $delc = 0;
         foreach ($kvarr as $t) {
+            if (strpos($t, '/') === false) {
+                continue;
+            }
 
-            list($type, $key) = explode("/", $t, 2);
+            [$type, $key] = explode("/", $t, 2);
 
             try {
                 $val = $this->conn->get($this->getRequestPath($type, $key), ['raw' => true]);
@@ -279,7 +285,7 @@ class Consul extends Store
                     $this->delete($type, $key);
                     $delc++;
                 }
-            } catch (\SensioLabs\Consul\Exception\ClientException $ex) {
+            } catch (ClientException $ex) {
                 Logger::debug('store.consul: cleanKVStore error for ' . $this->getRequestPath($type, $key) . ': ' . $ex->getMessage() . '.');
                 continue;
             } catch (\Exception $ex) {
@@ -292,20 +298,12 @@ class Consul extends Store
         Logger::debug("store.consul: Cleanup complete, $delc items removed");
     }
 
-    public function createQueryBuilder()
-    {
-        throw new \SimpleSAML\Error\Exception("KV based data persistence drivers do not support queries. Please rewrite module to use KV.", 8799);
-    }
-
-    /**
-     * @return string
-     */
-    public function getPrefix()
+    public function getPrefix(): string
     {
         return $this->mergePath($this->prefix, "v2");
     }
 
-    public function mergePath($root, $key)
+    public function mergePath(string $root, ?string $key): string
     {
         if (substr($root, -1, 1) == '/') {
             $root = substr($root, 0, -1);
@@ -326,18 +324,18 @@ class Consul extends Store
         return "$root/$key";
     }
 
-    private function getRequestPath($root = "", $key = null)
+    private function getRequestPath(string $root = "", ?string $key = null): string
     {
 
         return $this->mergePath($this->mergePath($this->getPrefix(), $root), $key);
     }
 
-    private function serialize($value)
+    private function serialize(mixed $value): string
     {
         return serialize($value);
     }
 
-    private function unserialize($value)
+    private function unserialize(string $value): mixed
     {
         return unserialize($value);
     }
@@ -386,7 +384,7 @@ class Consul extends Store
         }
 
         if (@$pl['multi'] == 1) {
-            $chunks = $this->get($this->mergePath($this->mergePath($type, $this->getNestedKey($key)), $pl['hash']), null);
+            $chunks = $this->getValue($this->mergePath($this->mergePath($type, $this->getNestedKey($key)), $pl['hash']), null);
             $ccount = intval($payload);
 
             $payload = "";
@@ -395,9 +393,9 @@ class Consul extends Store
             }
 
             if (md5($payload) != $pl['hash']) {
-                \SimpleSAML\Logger::error('Consul: decodeValue ' . $this->getRequestPath($type, $key) . ' checksum mismatch (' . $pl['hash'] . '), key deleted ');
+                Logger::error('Consul: decodeValue ' . $this->getRequestPath($type, $key) . ' checksum mismatch (' . $pl['hash'] . '), key deleted ');
                 $this->delete($type, $key);
-                throw new \SimpleSAML\Error\Exception("Checksum error for stored data", 8798);
+                throw new Error\Exception("Checksum error for stored data", 8798);
             }
 
             $payload = $this->unserialize($payload);
